@@ -2,6 +2,10 @@
 name = "ethanol"
 version = "0.1.0"
 authors = ["Brendan Allan <brendonovich@outlook.com>"]
+homepage = "https://github.com/brendonovich/ethanol"
+repository = "https://github.com/brendonovich/ethanol"
+description = "A type-safe Rust ORM"
+license = "MIT"
 edition = "2018"
 
 [dependencies]
@@ -9,3 +13,9 @@ ethanol-derive = { path = "derive", version = "0.1.0" }
 
 [dev-dependencies]
 tokio = { version = "0.2.22", features = ["full"] }
+
+[workspace]
+members = [
+    "derive",
+    "example"
+]

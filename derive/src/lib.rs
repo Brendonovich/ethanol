@@ -1,5 +1,5 @@
-use proc_macro::TokenStream;
-use syn::{parse_macro_input, Data, DeriveInput, DataStruct, Fields, FieldsNamed,  Type};
+use proc_macro::{TokenStream};
+use syn::{parse_macro_input, Data, DeriveInput, DataStruct, Fields, FieldsNamed, Type, Ident};
 
 #[macro_use]
 extern crate quote;
@@ -13,15 +13,27 @@ fn title_case(s: &str) -> String {
     }
 }
 
-struct FieldMeta {
-    t: Type,
+struct FilterFieldMeta<'a> {
+    t: &'a Type,
+    is_relation: bool,
+    input_type: Ident,
     model_getter: String,
     struct_name: String,
+    ops: Vec<&'a str>
+}
+
+fn type_filters<'a>(type_string: &str) -> Result<Vec<&'a str>, ()> {
+    match type_string {
+        "String" => Ok(vec!["equals", "contains", "hasPrefix", "hasSuffix"]),
+        "i32" => Ok(vec!["equals", "lte", "lt", "gt", "gte"]),
+        "i64" => Ok(vec!["equals", "lte", "lt", "gt", "gte"]),
+        "bool" => Ok(vec!["equals"]),
+        _ => Err(())
+    }
 }
 
 #[proc_macro_derive(Model)]
 pub fn derive_model(input: TokenStream) -> TokenStream {
-    let ops = vec!["equals", "contains"];
     let input = parse_macro_input!(input as DeriveInput);
     let model_name = input.ident;
 
@@ -44,14 +56,23 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
 
     let field_metas = fields.iter().map(|f| {
         let field_name = f.ident.as_ref().unwrap();
-        let t = f.ty.clone();
+        let t = &f.ty;
 
-        FieldMeta {
+        let t_str = &quote!{#t}.to_string();
+
+        let (is_relation, filters) = match type_filters(t_str){
+            Ok(filters) => (false, filters),
+            Err(()) => (true, vec!["some", "every"])
+        };
+        FilterFieldMeta {
             t,
+            input_type: format_ident!("{}", t_str),
+            is_relation,
+            ops: filters,
             model_getter: field_name.to_string(),
             struct_name: format!("{}{}Field", model_name.to_string(), title_case(&field_name.to_string()))
         }
-    }).collect::<Vec<FieldMeta>>();
+    }).collect::<Vec<FilterFieldMeta>>();
 
     let field_struct_declarations = field_metas.iter().map(|meta| {
         let field_struct_name = format_ident!("{}", meta.struct_name);
@@ -74,14 +95,23 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
     let field_struct_impls = field_metas.iter().map(|meta| {
         let field_struct_name = format_ident!("{}", meta.struct_name);
 
-        let field_ops = ops.iter().map(|&op| {
+        let field_ops = meta.ops.iter().map(|&op| {
             let op_fn_name = format_ident!("{}", op);
-            let op_enum_case = format_ident!("{}{}", title_case(&meta.model_getter), title_case(op));
-            let field_type = &meta.t;
+            let op_enum_case = format_ident!("{}_{}", &meta.model_getter, op);
 
-            quote! {
-                pub fn #op_fn_name(&self, v: #field_type) -> #operation_enum_name {
-                    #operation_enum_name::#op_enum_case(v)
+            if meta.is_relation {
+                let enum_type = format_ident!("{}Operation", meta.input_type);
+                quote!{
+                    pub fn #op_fn_name(&self, v: Vec<#enum_type>) -> #operation_enum_name {
+                        #operation_enum_name::#op_enum_case(v)
+                    }
+                }
+            } else {
+                let input_type = &meta.input_type;
+                quote! {
+                    pub fn #op_fn_name(&self, v: #input_type) -> #operation_enum_name {
+                        #operation_enum_name::#op_enum_case(v)
+                    }
                 }
             }
         });
@@ -94,14 +124,23 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
     });
 
     let operation_enum_cases = field_metas.iter().map(|meta| {
-        let t = &meta.t;
-        let field_name = &title_case(&meta.model_getter);
+        let field_cases = meta.ops.iter().map(|&op| {
+            let case_name = format_ident!("{}_{}", &meta.model_getter, op);
 
-        let field_cases = ops.iter().map(|&op| {
-            let case_name = format_ident!("{}{}", field_name, title_case(op));
+            if meta.is_relation {
+                let t = &meta.input_type;
 
-            quote! {
-                #case_name(#t)
+                let operation_name = format_ident!("{}Operation", t);
+
+                quote! {
+                    #case_name(Vec<#operation_name>)
+                }
+            }
+            else {
+                let type_name = meta.t;
+                quote! {
+                    #case_name(#type_name)
+                }
             }
         });
 
@@ -120,7 +159,7 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
 
         #(#field_struct_impls)*
 
-        impl Account {
+        impl #model_name {
             #(#field_struct_getters)*
         }
 
@@ -128,6 +167,17 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
 
         impl #queries_struct_name {
             fn find_one(&self, operations: Vec<#operation_enum_name>) -> Result<#model_name, ()> {
+                // println!("{:?}", operations);
+                Err(())
+            }
+
+            fn find_many(&self, operations: Vec<#operation_enum_name>) -> Result<Vec<#model_name>, ()> {
+                // println!("{:?}", operations);
+                Err(())
+            }
+
+            fn find_unique(&self, operations: Vec<#operation_enum_name>) -> Result<#model_name, ()> {
+                // println!("{:?}", operations);
                 Err(())
             }
         }
