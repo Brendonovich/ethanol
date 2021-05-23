@@ -1,0 +1,11 @@
+[package]
+name = "ethanol"
+version = "0.1.0"
+authors = ["Brendan Allan <brendonovich@outlook.com>"]
+edition = "2018"
+
+[dependencies]
+ethanol-derive = { path = "derive" }
+
+[dev-dependencies]
+tokio = { version = "0.2.22", features = ["full"] }
