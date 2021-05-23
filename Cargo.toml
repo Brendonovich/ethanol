@@ -5,7 +5,7 @@ authors = ["Brendan Allan <brendonovich@outlook.com>"]
 edition = "2018"
 
 [dependencies]
-ethanol-derive = { path = "derive" }
+ethanol-derive = { path = "derive", version = "0.1.0" }
 
 [dev-dependencies]
 tokio = { version = "0.2.22", features = ["full"] }
